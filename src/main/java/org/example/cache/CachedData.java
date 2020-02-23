@@ -25,30 +25,37 @@ public class CachedData<K, V> implements Cache<K, V> {
 
     @Override
     public V processCachedData(K key) {
-        //step1.加读锁
+
+        //尝试直接从缓存中获取数据
         readLock.lock();
         try {
             V value = instance.get(key);
-            //step2.如果未获取到数据，读锁升级为写锁
+            if (Objects.nonNull(value)) {
+                return value;
+            }
+        } finally {
+            readLock.unlock();
+        }
+
+        //如果读锁直接升级写锁，可能造成多个读锁同时竞争写锁，造成死锁
+        writeLock.lock();
+        try {
+            V value = instance.get(key);
+            //需要再check一次，可能在等待锁的过程中其他线程已经填充了缓存值
             if (Objects.isNull(value)) {
-                writeLock.lock();
-                try {
-                    value = load(key);
-                    instance.put(key, value);
-                } finally {
-                    writeLock.unlock();
-                }
+                value = load(key);
+                instance.put(key, value);
             }
             return value;
         } finally {
-            readLock.unlock();
+            writeLock.unlock();
         }
     }
 
     /**
      * 模拟数据库操作，查询一个key/value
-     * @param key
-     * @return
+     * @param key 查询数据库所需信息
+     * @return 数据库中对应的值
      */
     private V load(K key) {
         return null;
